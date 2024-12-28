@@ -69,6 +69,9 @@
         .correct {
             background-color: #90EE90;
         }
+        .incorrect {
+            background-color: #FFB6C1;
+        }
         button {
             margin: 10px;
             padding: 10px 20px;
@@ -103,56 +106,48 @@
 
     <script>
         const puzzle = {
-            width: 10,
-            height: 10,
-            grid: [
-                [1,1,1,1,1,1,1,1,0,0],
-                [0,0,0,2,0,0,0,0,0,0],
-                [0,0,0,1,0,0,0,0,0,0],
-                [3,1,1,1,1,1,1,1,0,0],
-                [0,0,0,1,0,0,0,0,0,0],
-                [0,0,0,1,0,0,0,0,0,0],
-                [0,0,0,1,0,0,0,0,0,0],
-                [0,0,0,0,0,0,0,0,0,0],
-                [0,0,0,0,0,0,0,0,0,0],
-                [0,0,0,0,0,0,0,0,0,0]
-            ],
             words: {
                 across: [
-                    { number: 1, clue: "Antídoto para sobredosis de opioides", answer: "NALOXONA" },
-                    { number: 3, clue: "Gas esencial para la vida y antídoto en múltiples intoxicaciones", answer: "OXIGENO" }
+                    { number: 1, word: "NALOXONA", row: 0, col: 0, 
+                      clue: "Antídoto para sobredosis de opioides" },
+                    { number: 3, word: "OXIGENO", row: 3, col: 0, 
+                      clue: "Gas esencial para la vida y antídoto en múltiples intoxicaciones" }
                 ],
                 down: [
-                    { number: 2, clue: "Antídoto para sobredosis de benzodiacepinas", answer: "FLUMAZENIL" },
-                    { number: 4, clue: "N-acetilcisteína (siglas)", answer: "NAC" }
+                    { number: 2, word: "FLUMAZENIL", row: 0, col: 3, 
+                      clue: "Antídoto para sobredosis de benzodiacepinas" },
+                    { number: 4, word: "NAC", row: 3, col: 3, 
+                      clue: "N-acetilcisteína (siglas)" }
                 ]
             }
         };
 
         function createGrid() {
             const gridElement = document.getElementById('grid');
-            let cellNumber = 1;
-
-            for (let i = 0; i < puzzle.height; i++) {
-                for (let j = 0; j < puzzle.width; j++) {
+            // Crear matriz 10x10 con celdas vacías
+            for (let i = 0; i < 10; i++) {
+                for (let j = 0; j < 10; j++) {
                     const cell = document.createElement('div');
                     cell.className = 'cell';
                     
-                    if (puzzle.grid[i][j] === 0) {
-                        cell.classList.add('black');
-                    } else {
+                    // Verificar si la celda debe ser parte de una palabra
+                    if (shouldCreateInput(i, j)) {
                         const input = document.createElement('input');
                         input.maxLength = 1;
                         input.dataset.row = i;
                         input.dataset.col = j;
                         cell.appendChild(input);
-
-                        if (puzzle.grid[i][j] === 1) {
-                            const number = document.createElement('div');
-                            number.className = 'number';
-                            number.textContent = cellNumber++;
-                            cell.appendChild(number);
+                        
+                        // Añadir números a las celdas iniciales de palabras
+                        const number = getWordNumber(i, j);
+                        if (number) {
+                            const numberDiv = document.createElement('div');
+                            numberDiv.className = 'number';
+                            numberDiv.textContent = number;
+                            cell.appendChild(numberDiv);
                         }
+                    } else {
+                        cell.classList.add('black');
                     }
                     
                     gridElement.appendChild(cell);
@@ -164,12 +159,50 @@
             inputs.forEach(input => {
                 input.addEventListener('keyup', (e) => {
                     if (e.key === 'Backspace' || e.key === 'Delete') {
+                        input.value = '';
                         navigateToPrevious(input);
                     } else if (input.value) {
                         navigateToNext(input);
                     }
                 });
+                
+                input.addEventListener('focus', () => {
+                    input.select();
+                });
             });
+        }
+
+        function shouldCreateInput(row, col) {
+            // Verificar si la celda es parte de alguna palabra
+            for (const direction of ['across', 'down']) {
+                for (const wordData of puzzle.words[direction]) {
+                    if (direction === 'across') {
+                        if (row === wordData.row && 
+                            col >= wordData.col && 
+                            col < wordData.col + wordData.word.length) {
+                            return true;
+                        }
+                    } else { // down
+                        if (col === wordData.col && 
+                            row >= wordData.row && 
+                            row < wordData.row + wordData.word.length) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        function getWordNumber(row, col) {
+            for (const direction of ['across', 'down']) {
+                for (const wordData of puzzle.words[direction]) {
+                    if (row === wordData.row && col === wordData.col) {
+                        return wordData.number;
+                    }
+                }
+            }
+            return null;
         }
 
         function createClues() {
@@ -216,36 +249,51 @@
         }
 
         function checkAnswers() {
-            const inputs = document.querySelectorAll('input');
             let allCorrect = true;
+            // Limpiar clases previas
+            document.querySelectorAll('.cell').forEach(cell => {
+                cell.classList.remove('correct', 'incorrect');
+            });
 
-            inputs.forEach(input => {
-                const row = parseInt(input.dataset.row);
-                const col = parseInt(input.dataset.col);
-                const cell = input.parentElement;
-
-                // Verificar horizontales
-                for (let word of puzzle.words.across) {
-                    if (puzzle.grid[row][col] === 1) {
-                        const userAnswer = getUserAnswer(row, col, 'across');
-                        if (userAnswer === word.answer) {
+            // Verificar palabras horizontales
+            puzzle.words.across.forEach(wordData => {
+                let userWord = '';
+                for (let i = 0; i < wordData.word.length; i++) {
+                    const input = document.querySelector(
+                        `input[data-row="${wordData.row}"][data-col="${wordData.col + i}"]`
+                    );
+                    if (input) {
+                        userWord += input.value.toUpperCase();
+                        // Marcar celda como correcta o incorrecta
+                        const cell = input.parentElement;
+                        if (input.value.toUpperCase() === wordData.word[i]) {
                             cell.classList.add('correct');
                         } else {
-                            cell.classList.remove('correct');
+                            cell.classList.add('incorrect');
                             allCorrect = false;
                         }
                     }
                 }
+            });
 
-                // Verificar verticales
-                for (let word of puzzle.words.down) {
-                    if (puzzle.grid[row][col] === 1) {
-                        const userAnswer = getUserAnswer(row, col, 'down');
-                        if (userAnswer === word.answer) {
-                            cell.classList.add('correct');
-                        } else {
-                            cell.classList.remove('correct');
-                            allCorrect = false;
+            // Verificar palabras verticales
+            puzzle.words.down.forEach(wordData => {
+                let userWord = '';
+                for (let i = 0; i < wordData.word.length; i++) {
+                    const input = document.querySelector(
+                        `input[data-row="${wordData.row + i}"][data-col="${wordData.col}"]`
+                    );
+                    if (input) {
+                        userWord += input.value.toUpperCase();
+                        // Marcar celda como correcta o incorrecta si no está ya marcada
+                        const cell = input.parentElement;
+                        if (!cell.classList.contains('correct')) {
+                            if (input.value.toUpperCase() === wordData.word[i]) {
+                                cell.classList.add('correct');
+                            } else {
+                                cell.classList.add('incorrect');
+                                allCorrect = false;
+                            }
                         }
                     }
                 }
@@ -256,85 +304,30 @@
             }
         }
 
-        function getUserAnswer(row, col, direction) {
-            let answer = '';
-            const inputs = document.querySelectorAll('input');
-            
-            if (direction === 'across') {
-                for (let i = 0; i < puzzle.width; i++) {
-                    const input = Array.from(inputs).find(
-                        input => parseInt(input.dataset.row) === row && 
-                                parseInt(input.dataset.col) === i
-                    );
-                    if (input) {
-                        answer += input.value.toUpperCase();
-                    }
-                }
-            } else {
-                for (let i = 0; i < puzzle.height; i++) {
-                    const input = Array.from(inputs).find(
-                        input => parseInt(input.dataset.row) === i && 
-                                parseInt(input.dataset.col) === col
-                    );
-                    if (input) {
-                        answer += input.value.toUpperCase();
-                    }
-                }
-            }
-            
-            return answer;
-        }
-
         function showSolution() {
-            const inputs = document.querySelectorAll('input');
-            
-            puzzle.words.across.forEach(word => {
-                let row, col;
-                // Encontrar la posición inicial de la palabra
-                for (let i = 0; i < puzzle.height; i++) {
-                    for (let j = 0; j < puzzle.width; j++) {
-                        if (puzzle.grid[i][j] === 1) {
-                            row = i;
-                            col = j;
-                            break;
-                        }
-                    }
-                    if (row !== undefined) break;
-                }
-                
-                // Rellenar la palabra
-                for (let i = 0; i < word.answer.length; i++) {
-                    const input = Array.from(inputs).find(
-                        input => parseInt(input.dataset.row) === row && 
-                                parseInt(input.dataset.col) === (col + i)
+            puzzle.words.across.forEach(wordData => {
+                for (let i = 0; i < wordData.word.length; i++) {
+                    const input = document.querySelector(
+                        `input[data-row="${wordData.row}"][data-col="${wordData.col + i}"]`
                     );
                     if (input) {
-                        input.value = word.answer[i];
+                        input.value = wordData.word[i];
                     }
                 }
             });
 
-            puzzle.words.down.forEach(word => {
-                let row = 0, col;
-                // Encontrar la columna de la palabra vertical
-                for (let j = 0; j < puzzle.width; j++) {
-                    if (puzzle.grid[row][j] === 1) {
-                        col = j;
-                        break;
-                    }
-                }
-                
-                // Rellenar la palabra
-                for (let i = 0; i < word.answer.length; i++) {
-                    const input = Array.from(inputs).find(
-                        input => parseInt(input.dataset.row) === (row + i) && 
-                                parseInt(input.dataset.col) === col
+            puzzle.words.down.forEach(wordData => {
+                for (let i = 0; i < wordData.word.length; i++) {
+                    const input = document.querySelector(
+                        `input[data-row="${wordData.row + i}"][data-col="${wordData.col}"]`
                     );
                     if (input) {
-                        input.value = word.answer[i];
+                        input.value = wordData.word[i];
                     }
                 }
             });
+            
+            checkAnswers();
         }
 
         // Inicializar el juego
